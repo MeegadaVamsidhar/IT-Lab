@@ -4,7 +4,7 @@ const Database = require('better-sqlite3');
 const bcrypt = require('bcryptjs');
 const session = require('express-session');
 
-const dbPath = path.join(__dirname, '..', 'mydb.db');
+const dbPath = path.join(__dirname, 'mydb.db');
 const db = new Database(dbPath);
 
 const userColumns = db.prepare("PRAGMA table_info(users)").all().map((column) => column.name);
