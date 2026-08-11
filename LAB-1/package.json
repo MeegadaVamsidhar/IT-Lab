@@ -1,0 +1,15 @@
+{
+  "name": "minimal-auth-demo",
+  "version": "1.0.0",
+  "description": "Minimal full-stack demo with login and registration (Express + SQLite)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "bcryptjs": "^2.4.3",
+    "express": "^4.18.2",
+    "express-session": "^1.17.3"
+  }
+}

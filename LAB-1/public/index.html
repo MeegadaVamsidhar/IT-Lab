@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Minimal Auth Demo</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Arial;margin:0;padding:20px;background:#f7f7f8}
+    .card{max-width:480px;margin:24px auto;padding:20px;background:white;border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.08)}
+    input{display:block;width:100%;padding:8px;margin:8px 0;border:1px solid #ddd;border-radius:4px}
+    button{padding:8px 12px;border:none;background:#007acc;color:#fff;border-radius:4px;cursor:pointer}
+    .muted{color:#666;font-size:0.9rem}
+  </style>
+</head>
+<body>
+  <div class="card" id="auth">
+    <h2>Register</h2>
+    <form id="registerForm">
+      <input name="username" placeholder="Username" required />
+      <input name="password" type="password" placeholder="Password (min 6)" required />
+      <button type="submit">Register</button>
+      <div class="muted">Already have an account? Use Login below.</div>
+    </form>
+
+    <hr />
+
+    <h2>Login</h2>
+    <form id="loginForm">
+      <input name="username" placeholder="Username" required />
+      <input name="password" type="password" placeholder="Password" required />
+      <button type="submit">Login</button>
+    </form>
+
+    <div id="message" class="muted"></div>
+  </div>
+
+  <div class="card" id="dashboard" style="display:none;">
+    <h2 id="welcome">Welcome!</h2>
+    <button id="logoutBtn">Logout</button>
+  </div>
+
+  <script>
+    const $ = sel => document.querySelector(sel);
+    const msg = txt => { const el = $('#message'); el.textContent = txt; setTimeout(()=>el.textContent='',4000); };
+
+    async function postJson(url, body){
+      const res = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+      return res.json().then(j=> ({ok: res.ok, body: j}));
+    }
+
+    $('#registerForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const f = e.target; const data = { username: f.username.value.trim(), password: f.password.value };
+      const res = await postJson('/api/register', data);
+      if (!res.ok) return msg(res.body.error || 'Register failed');
+      await loadMe();
+    });
+
+    $('#loginForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const f = e.target; const data = { username: f.username.value.trim(), password: f.password.value };
+      const res = await postJson('/api/login', data);
+      if (!res.ok) return msg(res.body.error || 'Login failed');
+      await loadMe();
+    });
+
+    $('#logoutBtn').addEventListener('click', async ()=>{
+      await postJson('/api/logout', {});
+      showAuth();
+    });
+
+    async function loadMe(){
+      const res = await fetch('/api/me');
+      if (res.ok){
+        const j = await res.json();
+        showDashboard(j.username);
+      } else {
+        showAuth();
+      }
+    }
+
+    function showDashboard(username){
+      $('#auth').style.display = 'none';
+      $('#dashboard').style.display = 'block';
+      $('#welcome').textContent = `Welcome, ${username}!`;
+    }
+    function showAuth(){
+      $('#auth').style.display = 'block';
+      $('#dashboard').style.display = 'none';
+    }
+
+    // try to auto-login if session exists
+    loadMe();
+  </script>
+</body>
+</html>
