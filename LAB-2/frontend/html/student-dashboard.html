@@ -1,0 +1,52 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Student Dashboard</title>
+  <link rel="stylesheet" href="/css/styles.css">
+ </head>
+<body>
+  <div class="container">
+    <header><h2>Student Dashboard</h2><button id="logout">Logout</button></header>
+    <section id="summary" class="card"></section>
+    <section>
+      <h3>Available Exams</h3>
+      <div id="exams"></div>
+    </section>
+  </div>
+
+  <script>
+    const token = localStorage.getItem('token');
+    if (!token) location.href = '/student-login.html';
+    async function api(path, opts={}){
+      opts.headers = Object.assign({'Content-Type':'application/json'}, opts.headers || {});
+      if (token) opts.headers.Authorization = 'Bearer ' + token;
+      const res = await fetch(path, opts);
+      if (res.status===401) { localStorage.removeItem('token'); location.href='/student-login.html'; }
+      return res.json();
+    }
+
+    document.getElementById('logout').addEventListener('click', ()=>{ localStorage.removeItem('token'); location.href='/'; });
+
+    (async function load(){
+      const exams = await api('/api/exams');
+      const container = document.getElementById('exams');
+      if (!Array.isArray(exams)) { container.innerText = JSON.stringify(exams); return; }
+      container.innerHTML = exams.map(e => `
+        <div class="exam-card">
+          <h4>${e.title}</h4>
+          <p>Questions: ${e.question_count || e.total_questions} • Duration: ${e.duration} min</p>
+          <button data-id="${e.id}" ${e.attempted? 'disabled':''} class="start">${e.attempted? 'Attempted':'Start Exam'}</button>
+        </div>`).join('');
+
+      container.querySelectorAll('.start').forEach(btn => btn.addEventListener('click', async (ev)=>{
+        const id = ev.target.dataset.id;
+        const j = await api('/api/start-exam', { method:'POST', body: JSON.stringify({ examId: Number(id) }) });
+        if (j.attemptId) location.href = '/exam.html?attempt=' + j.attemptId;
+        else alert(JSON.stringify(j));
+      }));
+    })();
+  </script>
+</body>
+</html>

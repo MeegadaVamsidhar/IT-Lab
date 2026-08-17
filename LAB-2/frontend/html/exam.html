@@ -1,0 +1,98 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Exam</title>
+  <link rel="stylesheet" href="/css/styles.css">
+ </head>
+<body>
+  <div class="exam-container">
+    <header><h2 id="examTitle">Exam</h2><div id="timer">--:--</div></header>
+    <main id="questionArea"></main>
+    <footer>
+      <button id="prev">Previous</button>
+      <button id="next">Next</button>
+      <button id="submit">Submit Exam</button>
+    </footer>
+  </div>
+
+  <script>
+    const token = localStorage.getItem('token');
+    if (!token) location.href = '/student-login.html';
+    const params = new URLSearchParams(location.search);
+    const attemptId = params.get('attempt');
+    if (!attemptId) { alert('attemptId missing'); location.href='/student-dashboard.html'; }
+
+    async function api(path, opts={}){
+      opts.headers = Object.assign({'Content-Type':'application/json'}, opts.headers || {});
+      if (token) opts.headers.Authorization = 'Bearer ' + token;
+      const res = await fetch(path, opts);
+      if (res.status===401) { localStorage.removeItem('token'); location.href='/student-login.html'; }
+      return res.json();
+    }
+
+    let state = { questions: [], current: 0, saved: {} };
+
+    async function loadSession(){
+      const s = await api('/api/exam-session/' + attemptId);
+      document.getElementById('examTitle').innerText = s.examTitle;
+      state.questions = s.questions;
+      state.saved = s.savedAnswers || {};
+      startTimer(s.startTime, s.durationMin);
+      renderQuestion(0);
+    }
+
+    function renderQuestion(i){
+      const q = state.questions[i];
+      if (!q) return;
+      state.current = i;
+      const area = document.getElementById('questionArea');
+      area.innerHTML = `
+        <div class="qnum">Question ${i+1} / ${state.questions.length}</div>
+        <div class="qtext">${q.question}</div>
+        <div class="opts">
+          ${Object.entries(q.options).map(([k,v]) => `
+            <label><input type="radio" name="opt" value="${k}" ${state.saved[q.id]==k? 'checked':''}> ${k}. ${v}</label>
+          `).join('')}
+        </div>
+      `;
+
+      area.querySelectorAll('input[name="opt"]').forEach(inp => inp.addEventListener('change', async (e)=>{
+        const selected = e.target.value;
+        await api('/api/save-answer', { method:'POST', body: JSON.stringify({ attemptId: Number(attemptId), questionId: q.id, selectedOption: selected }) });
+        state.saved[q.id] = selected;
+      }));
+    }
+
+    document.getElementById('prev').addEventListener('click', ()=> renderQuestion(Math.max(0, state.current-1)));
+    document.getElementById('next').addEventListener('click', ()=> renderQuestion(Math.min(state.questions.length-1, state.current+1)));
+    document.getElementById('submit').addEventListener('click', async ()=>{
+      if (!confirm('Submit exam now?')) return;
+      const res = await api('/api/submit-exam', { method:'POST', body: JSON.stringify({ attemptId: Number(attemptId) }) });
+      if (res.attemptId) location.href = '/result.html?attempt=' + res.attemptId;
+      else alert(JSON.stringify(res));
+    });
+
+    // Timer (simple): compute remaining from startTime + duration
+    function startTimer(startEpochMs, durationMin){
+      const end = Number(startEpochMs) + durationMin * 60 * 1000;
+      const el = document.getElementById('timer');
+      const tick = () => {
+        const left = Math.max(0, end - Date.now());
+        const mm = Math.floor(left/60000); const ss = Math.floor((left%60000)/1000);
+        el.innerText = `${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
+        if (left<=0) { clearInterval(interval); autoSubmit(); }
+      };
+      tick();
+      const interval = setInterval(tick, 1000);
+      async function autoSubmit(){
+        const res = await api('/api/submit-exam', { method:'POST', body: JSON.stringify({ attemptId: Number(attemptId) }) });
+        if (res.attemptId) location.href = '/result.html?attempt=' + res.attemptId;
+      }
+    }
+
+    loadSession();
+  </script>
+</body>
+</html>
