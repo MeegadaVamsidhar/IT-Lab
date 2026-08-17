@@ -1,0 +1,59 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Result</title>
+  <link rel="stylesheet" href="/css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+ </head>
+<body>
+  <div class="container">
+    <h2>Result</h2>
+    <div id="card"></div>
+    <canvas id="perfChart" width="400" height="200"></canvas>
+  </div>
+
+  <script>
+    const token = localStorage.getItem('token');
+    if (!token) location.href = '/student-login.html';
+    const params = new URLSearchParams(location.search);
+    const attemptId = params.get('attempt');
+    async function api(path, opts={}){
+      opts.headers = Object.assign({'Content-Type':'application/json'}, opts.headers || {});
+      if (token) opts.headers.Authorization = 'Bearer ' + token;
+      const res = await fetch(path, opts);
+      return res.json();
+    }
+
+    (async function load(){
+      if (!attemptId) return document.getElementById('card').innerText='missing attempt id';
+      const r = await api('/api/attempt/' + attemptId);
+      if (r.error) return document.getElementById('card').innerText = r.error;
+      const a = r.attempt;
+      const answers = r.answers || [];
+      const total = a.total_questions;
+      const correct = a.correct;
+      const wrong = a.wrong;
+      const unattempted = a.unattempted;
+      const score = a.score;
+      document.getElementById('card').innerHTML = `
+        <div class="card">
+          <h3>${a.exam_title}</h3>
+          <p>Student: ${a.student_name}</p>
+          <p>Total Questions: ${total}</p>
+          <p>Attempted: ${total - unattempted}</p>
+          <p>Correct: ${correct}</p>
+          <p>Wrong: ${wrong}</p>
+          <p>Unattempted: ${unattempted}</p>
+          <p>Score: ${score}</p>
+          <p>Percentage: ${a.percentage}%</p>
+          <p>Passed: ${a.passed ? 'Yes' : 'No'}</p>
+        </div>`;
+
+      const ctx = document.getElementById('perfChart').getContext('2d');
+      new Chart(ctx, { type: 'bar', data: { labels: ['Correct','Wrong','Unattempted'], datasets:[{ label: 'Count', data:[correct, wrong, unattempted], backgroundColor:['#2ecc71','#e74c3c','#f1c40f'] }] }, options: {} });
+    })();
+  </script>
+</body>
+</html>

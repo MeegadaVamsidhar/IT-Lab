@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Admin Dashboard</title>
+  <link rel="stylesheet" href="/css/styles.css">
+ </head>
+<body>
+  <div class="container">
+    <header><h2>Admin Dashboard</h2><button id="logout">Logout</button></header>
+    <section id="stats"></section>
+    <section>
+      <h3>Rankings</h3>
+      <div id="rankings"></div>
+    </section>
+  </div>
+
+  <script>
+    const token = localStorage.getItem('token'); if (!token) location.href='/admin-login.html';
+    const headers = { 'Content-Type':'application/json', Authorization: 'Bearer '+token };
+    document.getElementById('logout').addEventListener('click', ()=>{ localStorage.removeItem('token'); location.href='/'; });
+
+    (async function load(){
+      const s = await (await fetch('/api/admin/statistics',{headers})).json();
+      document.getElementById('stats').innerHTML = `<pre>${JSON.stringify(s,null,2)}</pre>`;
+      const r = await (await fetch('/api/admin/rankings',{headers})).json();
+      document.getElementById('rankings').innerHTML = `<pre>${JSON.stringify(r,null,2)}</pre>`;
+    })();
+  </script>
+</body>
+</html>

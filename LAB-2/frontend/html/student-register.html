@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Student Register</title>
+  <link rel="stylesheet" href="/css/styles.css">
+ </head>
+<body>
+  <div class="auth-card">
+    <h2>Student Registration</h2>
+    <form id="regForm">
+      <input name="name" placeholder="Full name" required>
+      <input name="email" type="email" placeholder="Email" required>
+      <input name="password" type="password" placeholder="Password" required>
+      <button type="submit">Register</button>
+    </form>
+    <p>Already have account? <a href="/student-login.html">Login</a></p>
+  </div>
+
+  <script>
+    document.getElementById('regForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = e.target;
+      const data = { name: f.name.value, email: f.email.value, password: f.password.value, role: 'student' };
+      const res = await fetch('/api/register', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+      const j = await res.json();
+      if (res.ok) {
+        // if token returned, save and go to dashboard
+        if (j.token) {
+          localStorage.setItem('token', j.token);
+          location.href = '/student-dashboard.html';
+        } else {
+          alert(j.message || 'Registered - awaiting approval');
+          location.href = '/';
+        }
+      } else alert(j.error || JSON.stringify(j));
+    });
+  </script>
+</body>
+</html>

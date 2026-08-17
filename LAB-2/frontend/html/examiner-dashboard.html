@@ -1,0 +1,163 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Examiner Dashboard</title>
+  <link rel="stylesheet" href="/css/styles.css">
+ </head>
+<body>
+  <div class="container">
+    <header><h2>Examiner Dashboard</h2><button id="logout">Logout</button></header>
+    <section>
+      <h3>Create Exam</h3>
+      <form id="examForm">
+        <input name="title" placeholder="Exam Title" required>
+        <input name="duration" type="number" placeholder="Duration (minutes)" required>
+        <input name="total_questions" type="number" placeholder="Total Questions" required>
+        <button type="submit">Create</button>
+      </form>
+    </section>
+    <section>
+      <div class="section-heading">
+        <div>
+          <h3>Question Bank</h3>
+          <p class="section-help">Select a test to add and view its questions.</p>
+        </div>
+        <select id="examSelect" aria-label="Select exam">
+          <option value="">Select an exam</option>
+        </select>
+      </div>
+      <form id="questionForm" hidden>
+        <input name="question" placeholder="Question text" required>
+        <div class="option-grid">
+          <input name="optionA" placeholder="Option A" required>
+          <input name="optionB" placeholder="Option B" required>
+          <input name="optionC" placeholder="Option C" required>
+          <input name="optionD" placeholder="Option D" required>
+        </div>
+        <div class="question-meta">
+          <select name="correct" required aria-label="Correct option">
+            <option value="">Correct option</option>
+            <option value="A">A</option>
+            <option value="B">B</option>
+            <option value="C">C</option>
+            <option value="D">D</option>
+          </select>
+          <input name="category" placeholder="Category (for example: Science)" required>
+          <button type="submit">Add Question</button>
+        </div>
+      </form>
+      <p id="questionMessage" class="form-message" role="status"></p>
+      <div id="questions"></div>
+    </section>
+  </div>
+
+  <script>
+    const token = localStorage.getItem('token'); if (!token) location.href='/examiner-login.html';
+    const headers = { 'Content-Type':'application/json', Authorization: 'Bearer '+token };
+    document.getElementById('logout').addEventListener('click', ()=>{ localStorage.removeItem('token'); location.href='/'; });
+
+    const examForm = document.getElementById('examForm');
+    const questionForm = document.getElementById('questionForm');
+    const examSelect = document.getElementById('examSelect');
+    const questions = document.getElementById('questions');
+    const questionMessage = document.getElementById('questionMessage');
+
+    function showMessage(message, error = false) {
+      questionMessage.textContent = message;
+      questionMessage.className = `form-message${error ? ' error' : ''}`;
+    }
+
+    function renderQuestions(items) {
+      questions.innerHTML = '';
+      if (!items.length) {
+        questions.innerHTML = '<p class="empty-state">No questions added yet. Use the form above to build this test.</p>';
+        return;
+      }
+
+      items.forEach((item, index) => {
+        const card = document.createElement('article');
+        card.className = 'question-card';
+        card.innerHTML = `
+          <div class="question-card-top"><strong>Question ${index + 1}</strong><span class="question-category"></span></div>
+          <p class="question-card-text"></p>
+          <ol class="question-options" type="A">
+            <li></li><li></li><li></li><li></li>
+          </ol>
+          <small class="answer-key">Correct answer: <span class="correct-option"></span></small>`;
+        card.querySelector('.question-category').textContent = item.category;
+        card.querySelector('.correct-option').textContent = item.correct_answer;
+        card.querySelector('.question-card-text').textContent = item.question;
+        [item.option_a, item.option_b, item.option_c, item.option_d]
+          .forEach((option, optionIndex) => { card.querySelectorAll('.question-options li')[optionIndex].textContent = option; });
+        questions.appendChild(card);
+      });
+    }
+
+    async function loadExam(examId) {
+      if (!examId) {
+        questionForm.hidden = true;
+        questions.innerHTML = '<p class="empty-state">Create or select a test to manage its questions.</p>';
+        return;
+      }
+      const res = await fetch('/api/exams/' + examId, { headers });
+      const exam = await res.json();
+      if (!res.ok) return showMessage(exam.error || 'Unable to load this test.', true);
+      questionForm.hidden = false;
+      showMessage(`${exam.questions.length} of ${exam.total_questions} questions added.`);
+      renderQuestions(exam.questions);
+    }
+
+    async function loadExams(selectedId) {
+      const res = await fetch('/api/exams', { headers });
+      const exams = await res.json();
+      if (!res.ok || !Array.isArray(exams)) return showMessage('Unable to load tests.', true);
+      examSelect.innerHTML = '<option value="">Select an exam</option>';
+      exams.forEach((exam) => {
+        const option = document.createElement('option');
+        option.value = exam.id;
+        option.textContent = `${exam.title} (${exam.question_count || 0}/${exam.total_questions})`;
+        examSelect.appendChild(option);
+      });
+      if (selectedId) {
+        examSelect.value = String(selectedId);
+        loadExam(selectedId);
+      }
+    }
+
+    examSelect.addEventListener('change', () => loadExam(examSelect.value));
+
+    examForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const f=e.target;
+      const body={ title:f.title.value.trim(), duration: Number(f.duration.value), total_questions: Number(f.total_questions.value) };
+      const res = await fetch('/api/exams', { method:'POST', headers, body: JSON.stringify(body) });
+      const j = await res.json();
+      if (!res.ok) return showMessage(j.error || 'Unable to create test.', true);
+      f.reset();
+      await loadExams(j.id);
+      showMessage('Test created. Add its questions below.');
+    });
+
+    questionForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = e.target;
+      const body = {
+        examId: Number(examSelect.value),
+        question: f.question.value.trim(),
+        options: { A: f.optionA.value.trim(), B: f.optionB.value.trim(), C: f.optionC.value.trim(), D: f.optionD.value.trim() },
+        correct: f.correct.value,
+        category: f.category.value.trim()
+      };
+      const res = await fetch('/api/questions', { method: 'POST', headers, body: JSON.stringify(body) });
+      const j = await res.json();
+      if (!res.ok) return showMessage(j.error || 'Unable to add question.', true);
+      f.reset();
+      await loadExam(examSelect.value);
+    });
+
+    loadExams();
+  </script>
+</body>
+</html>

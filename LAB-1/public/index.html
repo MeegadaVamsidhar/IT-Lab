@@ -5,66 +5,137 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Minimal Auth Demo</title>
   <style>
-    body{font-family:system-ui,Segoe UI,Arial;margin:0;padding:20px;background:#f7f7f8}
-    .card{max-width:480px;margin:24px auto;padding:20px;background:white;border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.08)}
-    input{display:block;width:100%;padding:8px;margin:8px 0;border:1px solid #ddd;border-radius:4px}
-    button{padding:8px 12px;border:none;background:#007acc;color:#fff;border-radius:4px;cursor:pointer}
-    .muted{color:#666;font-size:0.9rem}
+    :root{
+      --bg:#f4f5f7;
+      --card:#ffffff;
+      --text:#1a1a1a;
+      --muted:#71717a;
+      --line:#e4e4e7;
+      --accent:#2563eb;
+      --accent-hover:#1d4ed8;
+      --danger:#dc2626;
+      --radius:12px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+      background:var(--bg);color:var(--text);
+      font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+      padding:20px;
+    }
+    .card{
+      width:100%;max-width:400px;background:var(--card);
+      border:1px solid var(--line);border-radius:var(--radius);
+      box-shadow:0 10px 30px rgba(0,0,0,.06);padding:28px;
+    }
+    h1{font-size:20px;margin:0 0 4px;letter-spacing:-.02em}
+    .subtitle{color:var(--muted);font-size:14px;margin:0 0 24px}
+    .tabs{display:flex;gap:8px;background:#f1f1f4;border-radius:8px;padding:4px;margin-bottom:20px}
+    .tab{flex:1;border:none;background:transparent;padding:8px;border-radius:6px;
+      font-size:14px;font-weight:500;color:var(--muted);cursor:pointer;transition:all .15s}
+    .tab.active{background:var(--card);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+    form{display:block}
+    label{display:block;font-size:13px;font-weight:500;margin:14px 0 6px;color:var(--text)}
+    input{
+      width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;
+      font-size:14px;background:var(--card);color:var(--text);outline:none;transition:border-color .15s,box-shadow .15s;
+    }
+    input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+    button[type=submit]{
+      width:100%;margin-top:20px;padding:10px;border:none;border-radius:8px;
+      background:var(--accent);color:#fff;font-size:14px;font-weight:600;cursor:pointer;transition:background .15s;
+    }
+    button[type=submit]:hover{background:var(--accent-hover)}
+    .danger-btn{
+      width:100%;margin-top:20px;padding:10px;border:1px solid var(--line);border-radius:8px;
+      background:var(--card);color:var(--danger);font-size:14px;font-weight:600;cursor:pointer;transition:background .15s;
+    }
+    .danger-btn:hover{background:#fef2f2}
+    .message{margin-top:16px;font-size:13px;color:var(--muted);min-height:18px}
+    .message.error{color:var(--danger)}
+    .panel[hidden]{display:none}
   </style>
 </head>
 <body>
-  <div class="card" id="auth">
-    <h2>Register</h2>
-    <form id="registerForm">
-      <input name="username" placeholder="Username" required />
-      <input name="password" type="password" placeholder="Password (min 6)" required />
-      <button type="submit">Register</button>
-      <div class="muted">Already have an account? Use Login below.</div>
-    </form>
+  <div class="card">
+    <h1 id="appTitle">Minimal Auth</h1>
+    <p class="subtitle" id="appSubtitle">Express + SQLite demo</p>
 
-    <hr />
+    <div id="auth" class="panel">
+      <div class="tabs">
+        <button type="button" id="tabLogin" class="tab active">Login</button>
+        <button type="button" id="tabRegister" class="tab">Register</button>
+      </div>
 
-    <h2>Login</h2>
-    <form id="loginForm">
-      <input name="username" placeholder="Username" required />
-      <input name="password" type="password" placeholder="Password" required />
-      <button type="submit">Login</button>
-    </form>
+      <form id="loginForm">
+        <label for="loginUsername">Username</label>
+        <input id="loginUsername" name="username" autocomplete="username" required />
+        <label for="loginPassword">Password</label>
+        <input id="loginPassword" name="password" type="password" autocomplete="current-password" required />
+        <button type="submit">Login</button>
+      </form>
 
-    <div id="message" class="muted"></div>
-  </div>
+      <form id="registerForm" hidden>
+        <label for="regUsername">Username</label>
+        <input id="regUsername" name="username" autocomplete="username" required />
+        <label for="regPassword">Password</label>
+        <input id="regPassword" name="password" type="password" minlength="6" autocomplete="new-password" required />
+        <button type="submit">Create account</button>
+      </form>
 
-  <div class="card" id="dashboard" style="display:none;">
-    <h2 id="welcome">Welcome!</h2>
-    <button id="logoutBtn">Logout</button>
+      <div id="message" class="message"></div>
+    </div>
+
+    <div id="dashboard" class="panel" hidden>
+      <h1 id="welcome" style="margin-top:0">Welcome!</h1>
+      <p class="subtitle">You are signed in.</p>
+      <button id="logoutBtn" class="danger-btn">Logout</button>
+    </div>
   </div>
 
   <script>
     const $ = sel => document.querySelector(sel);
-    const msg = txt => { const el = $('#message'); el.textContent = txt; setTimeout(()=>el.textContent='',4000); };
+    const msg = (txt, isError) => {
+      const el = $('#message');
+      el.textContent = txt;
+      el.classList.toggle('error', !!isError);
+      setTimeout(() => { el.textContent = ''; el.classList.remove('error'); }, 4000);
+    };
+
+    function switchTab(name){
+      const login = name === 'login';
+      $('#tabLogin').classList.toggle('active', login);
+      $('#tabRegister').classList.toggle('active', !login);
+      $('#loginForm').hidden = !login;
+      $('#registerForm').hidden = login;
+    }
+    $('#tabLogin').addEventListener('click', () => switchTab('login'));
+    $('#tabRegister').addEventListener('click', () => switchTab('register'));
 
     async function postJson(url, body){
       const res = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
-      return res.json().then(j=> ({ok: res.ok, body: j}));
+      return res.json().then(j => ({ ok: res.ok, body: j }));
     }
 
     $('#registerForm').addEventListener('submit', async e => {
       e.preventDefault();
-      const f = e.target; const data = { username: f.username.value.trim(), password: f.password.value };
+      const f = e.target;
+      const data = { username: f.username.value.trim(), password: f.password.value };
       const res = await postJson('/api/register', data);
-      if (!res.ok) return msg(res.body.error || 'Register failed');
+      if (!res.ok) return msg(res.body.error || 'Register failed', true);
       await loadMe();
     });
 
     $('#loginForm').addEventListener('submit', async e => {
       e.preventDefault();
-      const f = e.target; const data = { username: f.username.value.trim(), password: f.password.value };
+      const f = e.target;
+      const data = { username: f.username.value.trim(), password: f.password.value };
       const res = await postJson('/api/login', data);
-      if (!res.ok) return msg(res.body.error || 'Login failed');
+      if (!res.ok) return msg(res.body.error || 'Login failed', true);
       await loadMe();
     });
 
-    $('#logoutBtn').addEventListener('click', async ()=>{
+    $('#logoutBtn').addEventListener('click', async () => {
       await postJson('/api/logout', {});
       showAuth();
     });
@@ -80,16 +151,16 @@
     }
 
     function showDashboard(username){
-      $('#auth').style.display = 'none';
-      $('#dashboard').style.display = 'block';
+      $('#auth').hidden = true;
+      $('#dashboard').hidden = false;
       $('#welcome').textContent = `Welcome, ${username}!`;
     }
     function showAuth(){
-      $('#auth').style.display = 'block';
-      $('#dashboard').style.display = 'none';
+      $('#auth').hidden = false;
+      $('#dashboard').hidden = true;
+      switchTab('login');
     }
 
-    // try to auto-login if session exists
     loadMe();
   </script>
 </body>

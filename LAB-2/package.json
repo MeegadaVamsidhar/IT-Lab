@@ -1,0 +1,15 @@
+{
+  "name": "exam-system-mcq",
+  "version": "1.0.0",
+  "description": "Complete Online Examination System (MCQ) - Express + SQLite + JWT + bcrypt",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^13.0.3",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2"
+  }
+}

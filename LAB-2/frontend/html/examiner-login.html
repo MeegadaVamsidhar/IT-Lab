@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Examiner Login</title>
+  <link rel="stylesheet" href="/css/styles.css">
+ </head>
+<body>
+  <div class="auth-card">
+    <h2>Examiner Login</h2>
+    <form id="loginForm">
+      <input name="email" type="email" placeholder="Email" required>
+      <input name="password" type="password" placeholder="Password" required>
+      <button type="submit">Login</button>
+    </form>
+  </div>
+
+  <script>
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = e.target;
+      const res = await fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ email: f.email.value, password: f.password.value }) });
+      const j = await res.json();
+      if (res.ok) {
+        localStorage.setItem('token', j.token);
+        location.href = '/examiner-dashboard.html';
+      } else alert(j.error || JSON.stringify(j));
+    });
+  </script>
+</body>
+</html>
