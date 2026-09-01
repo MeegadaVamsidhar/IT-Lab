@@ -13,3 +13,5 @@ yarn-error.log*
 pnpm-debug.log*
 .DS_Store
 Thumbs.db
+LAB-3/data/objects/*.part
+LAB-3/data/objects/
