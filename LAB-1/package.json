@@ -11,5 +11,8 @@
     "bcryptjs": "^2.4.3",
     "express": "^4.18.2",
     "express-session": "^1.17.3"
+  },
+  "overrides": {
+    "qs": "^6.15.4"
   }
 }
