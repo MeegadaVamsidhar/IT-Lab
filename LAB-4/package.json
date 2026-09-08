@@ -1,0 +1,13 @@
+{
+  "name": "pulsepass-ticketing",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SQLite-backed PulsePass ticketing platform prototype",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}
