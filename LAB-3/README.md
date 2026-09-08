@@ -13,7 +13,7 @@ LocalCloud is a runnable assignment project for large-file sharing on a local ne
 python server.py
 ```
 
-Open <http://localhost:8080>. A mandatory account chooser appears first for the demo users `admin`, `alice` and `bob`. The server issues an authenticated session token after selection and applies role-based access on every protected API request.
+Set `LOCALCLOUD_PASSWORD` before the first run, then open <http://localhost:8080>. The demo users `admin`, `alice` and `bob` share that bootstrap password. If it is omitted, the server generates and prints a one-time password for the initial database setup. The server verifies the password before issuing an authenticated session token and applies role-based access on every protected API request.
 
 ## Features covered
 
@@ -40,5 +40,6 @@ The default maximum file size is **50 GB**. It can be changed before startup:
 ```powershell
 $env:LOCALCLOUD_MAX_FILE_GB=100
 $env:LOCALCLOUD_CHUNK_MB=16
+$env:LOCALCLOUD_PASSWORD='use-a-local-password'
 python server.py
 ```

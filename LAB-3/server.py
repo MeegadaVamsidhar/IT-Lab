@@ -1,7 +1,7 @@
-import base64, hashlib, json, mimetypes, os, queue, shutil, sqlite3, threading, time, uuid
+import base64, hashlib, hmac, json, mimetypes, os, queue, secrets, shutil, sqlite3, threading, time, uuid
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(ROOT, 'data')
@@ -16,25 +16,43 @@ DOWNLOAD_TICKETS = {}
 DOWNLOAD_LOCK = threading.Lock()
 CHUNK_SIZE = int(os.environ.get('LOCALCLOUD_CHUNK_MB', '8')) * 1024 * 1024
 MAX_FILE_SIZE = int(os.environ.get('LOCALCLOUD_MAX_FILE_GB', '50')) * 1024 ** 3
+DEFAULT_PASSWORD = os.environ.get('LOCALCLOUD_PASSWORD') or secrets.token_urlsafe(16)
 
 def db():
     c = sqlite3.connect(DB_PATH, timeout=30)
     c.row_factory = sqlite3.Row
     return c
 
+def password_hash(password):
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 300_000)
+    return salt.hex() + '$' + digest.hex()
+
+def password_matches(password, stored):
+    try:
+        salt, digest = stored.split('$', 1)
+        candidate = hashlib.pbkdf2_hmac('sha256', password.encode(), bytes.fromhex(salt), 300_000).hex()
+        return hmac.compare_digest(candidate, digest)
+    except (AttributeError, ValueError):
+        return False
+
 def init_db():
     with db() as c:
         c.executescript('''
         PRAGMA journal_mode=WAL;
-        CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, username TEXT UNIQUE, display_name TEXT, role TEXT DEFAULT 'member', avatar TEXT);
+        CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, username TEXT UNIQUE, display_name TEXT, role TEXT DEFAULT 'member', avatar TEXT, password_hash TEXT);
         CREATE TABLE IF NOT EXISTS files(id TEXT PRIMARY KEY, name TEXT, size INTEGER, mime TEXT, owner_id INTEGER, status TEXT, checksum TEXT, created_at REAL, updated_at REAL, node_id TEXT);
         CREATE TABLE IF NOT EXISTS permissions(file_id TEXT, user_id INTEGER, access TEXT, PRIMARY KEY(file_id,user_id));
         CREATE TABLE IF NOT EXISTS uploads(id TEXT PRIMARY KEY, file_id TEXT, user_id INTEGER, total_size INTEGER, chunk_size INTEGER, received INTEGER, status TEXT, started_at REAL, updated_at REAL, error TEXT);
         CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, message TEXT, file_id TEXT, user_id INTEGER, meta TEXT, created_at REAL);
         CREATE TABLE IF NOT EXISTS nodes(id TEXT PRIMARY KEY, label TEXT, status TEXT, capacity INTEGER, used INTEGER, active_transfers INTEGER, latency INTEGER, updated_at REAL);
         ''')
+        columns = [row['name'] for row in c.execute('PRAGMA table_info(users)').fetchall()]
+        if 'password_hash' not in columns: c.execute('ALTER TABLE users ADD COLUMN password_hash TEXT')
         users = [('admin','System Admin','admin','AD'),('alice','Alice Johnson','member','AJ'),('bob','Bob Smith','member','BS')]
-        for u in users: c.execute('INSERT OR IGNORE INTO users(username,display_name,role,avatar) VALUES(?,?,?,?)', u)
+        for username, display_name, role, avatar in users:
+            c.execute('INSERT OR IGNORE INTO users(username,display_name,role,avatar,password_hash) VALUES(?,?,?,?,?)', (username, display_name, role, avatar, password_hash(DEFAULT_PASSWORD)))
+            c.execute('UPDATE users SET password_hash=? WHERE username=? AND (password_hash IS NULL OR password_hash="")', (password_hash(DEFAULT_PASSWORD), username))
         now=time.time()
         nodes=[('node-a','Primary Node','online',500*1024**3,0,0,12,now),('node-b','Replica Node','online',500*1024**3,0,0,24,now),('node-c','Archive Node','degraded',1000*1024**3,0,0,48,now)]
         for n in nodes: c.execute('INSERT OR IGNORE INTO nodes VALUES(?,?,?,?,?,?,?,?)', n)
@@ -88,9 +106,9 @@ class Handler(BaseHTTPRequestHandler):
         if path=='/api/users':
             with db() as c: return self.send_json({'users':[dict(x) for x in c.execute('SELECT * FROM users').fetchall()]})
         if path=='/api/login' and self.command=='POST':
-            d=json.loads(self.body()); with_db=db();
-            with with_db as c: u=c.execute('SELECT * FROM users WHERE username=?',(d.get('username',''),)).fetchone()
-            if not u: return self.send_json({'error':'Unknown user'},401)
+            d=json.loads(self.body());
+            with db() as c: u=c.execute('SELECT * FROM users WHERE username=?',(d.get('username',''),)).fetchone()
+            if not u or not password_matches(d.get('password',''), u['password_hash']): return self.send_json({'error':'Invalid credentials'},401)
             token=uuid.uuid4().hex
             with SESSION_LOCK: SESSIONS[token]=u['id']
             log('security',f"{u['display_name']} signed in",None,u['id'])
@@ -144,23 +162,39 @@ class Handler(BaseHTTPRequestHandler):
         if size <= 0: return self.send_json({'error':'File is empty'},400)
         if size > MAX_FILE_SIZE: return self.send_json({'error':f'File exceeds the configured {MAX_FILE_SIZE // 1024**3} GB limit'},413)
         if shutil.disk_usage(DATA).free < size + CHUNK_SIZE: return self.send_json({'error':'Insufficient local storage'},507)
+        name=d.get('name','')
+        mime=d.get('mime','application/octet-stream')
+        if not isinstance(name,str) or not name or len(name)>255: return self.send_json({'error':'Invalid file name'},400)
+        if not isinstance(mime,str) or any(char in mime for char in '\r\n'): mime='application/octet-stream'
         with db() as c:
-            c.execute('INSERT INTO files VALUES(?,?,?,?,?,?,?,?,?,?)',(fid,d['name'],size,d.get('mime','application/octet-stream'),uid,'uploading','',now,now,node)); c.execute('INSERT INTO uploads VALUES(?,?,?,?,?,?,?,?,?,?)',(sid,fid,uid,size,CHUNK_SIZE,0,'active',now,now,''))
+            c.execute('INSERT INTO files VALUES(?,?,?,?,?,?,?,?,?,?)',(fid,name,size,mime,uid,'uploading','',now,now,node)); c.execute('INSERT INTO uploads VALUES(?,?,?,?,?,?,?,?,?,?)',(sid,fid,uid,size,CHUNK_SIZE,0,'active',now,now,''))
         with open(os.path.join(STORE,sid+'.part'),'wb') as f: f.truncate(size)
-        log('upload','Upload session created for '+d['name'],fid,uid,{'node':node}); return self.send_json({'upload_id':sid,'file_id':fid,'chunk_size':CHUNK_SIZE})
+        log('upload','Upload session created for '+name,fid,uid,{'node':node}); return self.send_json({'upload_id':sid,'file_id':fid,'chunk_size':CHUNK_SIZE})
     def upload_chunk(self,sid):
         with db() as c: up=c.execute('SELECT * FROM uploads WHERE id=?',(sid,)).fetchone()
         if not up: return self.send_json({'error':'Upload not found'},404)
         if up['user_id']!=self.current_user['id'] and self.current_user['role']!='admin': return self.send_json({'error':'Access denied'},403)
-        idx=int(self.headers.get('X-Chunk-Index','0')); data=self.body(); offset=idx*up['chunk_size']
+        if up['status']!='active': return self.send_json({'error':'Upload is not active'},409)
+        try: idx=int(self.headers.get('X-Chunk-Index','-1'))
+        except ValueError: return self.send_json({'error':'Invalid chunk index'},400)
+        offset=idx*up['chunk_size']; remaining=up['total_size']-offset
+        expected=min(up['chunk_size'], remaining)
+        if idx<0 or remaining<=0 or offset!=up['received'] or expected<=0: return self.send_json({'error':'Unexpected chunk'},400)
+        try: length=int(self.headers.get('Content-Length','-1'))
+        except ValueError: return self.send_json({'error':'Invalid content length'},400)
+        if length!=expected: return self.send_json({'error':'Chunk has an invalid size'},413)
+        data=self.rfile.read(expected)
+        if len(data)!=expected: return self.send_json({'error':'Incomplete chunk'},400)
         with open(os.path.join(STORE,sid+'.part'),'r+b') as f: f.seek(offset); f.write(data)
-        received=min(up['total_size'], max(up['received'],offset+len(data)))
+        received=offset+len(data)
         with db() as c: c.execute('UPDATE uploads SET received=?,updated_at=? WHERE id=?',(received,time.time(),sid))
         return self.send_json({'received':received,'total':up['total_size'],'percent':round(received*100/up['total_size'],1)})
     def upload_complete(self,sid):
         with db() as c: up=c.execute('SELECT * FROM uploads WHERE id=?',(sid,)).fetchone()
         if not up: return self.send_json({'error':'Upload not found'},404)
         if up['user_id']!=self.current_user['id'] and self.current_user['role']!='admin': return self.send_json({'error':'Access denied'},403)
+        if up['status']!='active': return self.send_json({'error':'Upload is not active'},409)
+        if up['received']!=up['total_size']: return self.send_json({'error':'Upload is incomplete'},409)
         part=os.path.join(STORE,sid+'.part'); h=hashlib.sha256();
         with open(part,'rb') as f:
             for b in iter(lambda:f.read(1024*1024),b''): h.update(b)
@@ -171,10 +205,21 @@ class Handler(BaseHTTPRequestHandler):
         f,ok=can_access(fid,uid,'viewer')
         if not ok or f['status']!='available': return self.send_json({'error':'Access denied or file unavailable'},403)
         path=os.path.join(STORE,fid); size=os.path.getsize(path); start=0; end=size-1; rng=self.headers.get('Range')
-        if rng and rng.startswith('bytes='):
-            a,b=(rng[6:].split('-',1)+[''])[:2]; start=int(a or 0); end=int(b or size-1); self.send_response(206); self.send_header('Content-Range',f'bytes {start}-{end}/{size}')
+        if rng:
+            if not rng.startswith('bytes=') or ',' in rng: return self.send_range_error(size)
+            value=rng[6:]
+            if '-' not in value: return self.send_range_error(size)
+            a,b=value.split('-',1)
+            try:
+                if a: start=int(a); end=int(b) if b else size-1
+                elif b: length=int(b); start=max(0,size-length); end=size-1
+                else: return self.send_range_error(size)
+            except ValueError: return self.send_range_error(size)
+            if start<0 or start>=size or end<start: return self.send_range_error(size)
+            end=min(end,size-1); self.send_response(206); self.send_header('Content-Range',f'bytes {start}-{end}/{size}')
         else: self.send_response(200)
-        self.send_header('Content-Type',f['mime']); self.send_header('Content-Length',str(end-start+1)); self.send_header('Content-Disposition',f"attachment; filename*=UTF-8''{f['name']}"); self.end_headers()
+        safe_name=quote(f['name'], safe='')
+        self.send_header('Content-Type',f['mime']); self.send_header('Content-Length',str(end-start+1)); self.send_header('Content-Disposition',f"attachment; filename*=UTF-8''{safe_name}"); self.end_headers()
         with open(path,'rb') as x:
             x.seek(start); remaining=end-start+1
             while remaining:
@@ -182,6 +227,8 @@ class Handler(BaseHTTPRequestHandler):
                 if not chunk: break
                 self.wfile.write(chunk); remaining-=len(chunk)
         log('download',f"Downloaded {f['name']}",fid,uid)
+    def send_range_error(self,size):
+        self.send_response(416); self.send_header('Content-Range',f'bytes */{size}'); self.send_header('Content-Length','0'); self.end_headers()
     def download_ticket(self,fid,current):
         f,ok=can_access(fid,current['id'],'viewer')
         if not ok or f['status']!='available': return self.send_json({'error':'Access denied or file unavailable'},403)
@@ -240,4 +287,4 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:self.send_json({'error':str(e)},500)
 
 if __name__=='__main__':
-    init_db(); threading.Thread(target=event_worker,daemon=True).start(); print('LocalCloud running at http://localhost:8080'); ThreadingHTTPServer(('localhost',8080),Handler).serve_forever()
+    init_db(); threading.Thread(target=event_worker,daemon=True).start(); print('LocalCloud running at http://localhost:8080'); print('Set LOCALCLOUD_PASSWORD before first run, or use this generated password:', DEFAULT_PASSWORD); ThreadingHTTPServer(('localhost',8080),Handler).serve_forever()
