@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Let's Play | Multiplayer Tic-Tac-Toe</title>
+    <meta
+      name="description"
+      content="Play real-time multiplayer Tic-Tac-Toe, join game rooms, track matches, and climb the leaderboard."
+    />
+    <meta name="theme-color" content="#1c2435" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231c2435'/%3E%3Cpath d='M16 7v18M7 16h18' stroke='%23cbf36b' stroke-width='3'/%3E%3C/svg%3E" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+      rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
+    />
+    <noscript>
+      <link
+        href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+        rel="stylesheet"
+      />
+    </noscript>
+    <link rel="stylesheet" href="/css/style.css" />
+    <script src="/socket.io/socket.io.js"></script>
+  </head>
+  <body>
+    <div id="toast-stack" aria-live="polite"></div>
+    <main id="auth-shell" class="auth-shell">
+      <section class="auth-copy">
+        <div class="brand"><span class="brand-mark">+</span> NEON GRID</div>
+        <p class="eyebrow">REAL-TIME ARENA / 01</p>
+        <h1>Make your<br /><em>next move.</em></h1>
+        <p class="lede">
+          A sharper way to play Tic-Tac-Toe with friends across the room or
+          across the network.
+        </p>
+        <div class="orbit"><span>✕</span><span>○</span><span>✕</span></div>
+      </section>
+      <section class="auth-card">
+        <div class="auth-tabs">
+          <button class="tab active" data-auth="login">Sign in</button
+          ><button class="tab" data-auth="register">Create account</button>
+        </div>
+        <form id="login-form" class="auth-form">
+          <label
+            >Username or email<input
+              name="identity"
+              required
+              autocomplete="username" /></label
+          ><label
+            >Password<input
+              name="password"
+              type="password"
+              required
+              autocomplete="current-password" /></label
+          ><button class="primary full" type="submit">
+            Enter the arena <span>→</span>
+          </button>
+        </form>
+        <form id="register-form" class="auth-form hidden">
+          <label>Display name<input name="name" required /></label
+          ><label
+            >Username<input name="username" required minlength="3" /></label
+          ><label>Email<input name="email" type="email" required /></label
+          ><label
+            >Password<input
+              name="password"
+              type="password"
+              required
+              minlength="6" /></label
+          ><button class="primary full" type="submit">
+            Create player <span>→</span>
+          </button>
+        </form>
+        <p id="auth-error" class="form-error"></p>
+      </section>
+    </main>
+    <div id="app-shell" class="app-shell hidden">
+      <aside class="sidebar">
+        <div class="brand"><span class="brand-mark">+</span> NEON GRID</div>
+        <div class="profile-mini">
+          <div id="avatar" class="avatar">?</div>
+          <div>
+            <strong id="sidebar-name">Player</strong
+            ><small id="sidebar-handle">@player</small>
+          </div>
+        </div>
+        <nav>
+          <button class="nav-item active" data-view="dashboard">
+            <span>⌂</span> Overview</button
+          ><button class="nav-item" data-view="rooms">
+            <span>◈</span> Play room</button
+          ><button class="nav-item" data-view="history">
+            <span>◷</span> Match history</button
+          ><button class="nav-item" data-view="leaderboard">
+            <span>↗</span> Leaderboard</button
+          ><button class="nav-item" data-view="analytics">
+            <span>⌁</span> Analytics
+          </button>
+        </nav>
+        <button id="logout" class="logout">Log out <span>↗</span></button>
+      </aside>
+      <section class="main-content">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">TUESDAY / LIVE NETWORK</p>
+            <h2 id="view-title">Overview</h2>
+          </div>
+          <div class="top-actions">
+            <span class="online-dot"></span
+            ><span id="online-count">1 online</span
+            ><button id="refresh" class="icon-btn" title="Refresh data">
+              ↻
+            </button>
+          </div>
+        </header>
+        <div id="view-container"></div>
+      </section>
+    </div>
+    <template id="dashboard-view"
+      ><div class="hero-row">
+        <div>
+          <p class="eyebrow accent">YOUR SEASON</p>
+          <h3>Ready for a<br /><em>rematch?</em></h3>
+          <p class="muted">Jump into a live room or challenge someone new.</p>
+          <button class="primary" data-action="new-room">
+            Create a room <span>+</span>
+          </button>
+          <button class="secondary hero-secondary" data-view="rooms">
+            Browse rooms <span>↗</span>
+          </button>
+        </div>
+        <div class="hero-board">
+          <span>×</span><span>○</span><span>×</span><span>○</span><span>×</span>
+        </div>
+      </div>
+      <div class="stats-grid">
+        <div class="stat">
+          <small>GAMES PLAYED</small><strong id="stat-games">0</strong
+          ><span class="trend">all time</span>
+        </div>
+        <div class="stat">
+          <small>WINS</small><strong id="stat-wins">0</strong
+          ><span class="trend good">+10 credits</span>
+        </div>
+        <div class="stat">
+          <small>WIN RATE</small><strong id="stat-rate">0%</strong
+          ><span class="trend">keep going</span>
+        </div>
+        <div class="stat highlight">
+          <small>CREDITS</small><strong id="stat-credits">0</strong
+          ><span class="trend">your balance</span>
+        </div>
+      </div>
+      <div class="split-grid">
+        <section class="panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">FIND YOUR MATCH</p>
+              <h3>Active rooms</h3>
+            </div>
+            <button class="text-btn" data-view="rooms">See all →</button>
+          </div>
+          <div id="room-preview" class="room-list"></div>
+        </section>
+        <section class="panel activity-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">RECENT PULSE</p>
+              <h3>Latest matches</h3>
+            </div>
+            <button class="text-btn" data-view="history">View history →</button>
+          </div>
+          <div id="match-preview"></div>
+        </section></div
+    ></template>
+    <template id="rooms-view"
+      ><div class="section-intro">
+        <div>
+          <p class="eyebrow accent">MULTIPLAYER LOBBY</p>
+          <h3>Choose your arena.</h3>
+          <p class="muted">
+            Create a private room and share its code, or join one already
+            warming up.
+          </p>
+        </div>
+        <div class="room-actions">
+          <button class="primary" data-action="new-room">+ Create room</button
+          ><button class="secondary" data-action="join-room">
+            Join with code
+          </button>
+        </div>
+      </div>
+      <div id="room-list" class="room-list large"></div
+    ></template>
+    <template id="history-view"
+      ><div class="section-intro">
+        <div>
+          <p class="eyebrow accent">YOUR RECORD</p>
+          <h3>Match history</h3>
+          <p class="muted">
+            Every close call, clean sweep and hard-earned draw.
+          </p>
+        </div>
+      </div>
+      <section class="panel table-panel"><div id="history-table"></div></section
+    ></template>
+    <template id="leaderboard-view"
+      ><div class="section-intro">
+        <div>
+          <p class="eyebrow accent">THE RANKINGS</p>
+          <h3>Who is on top?</h3>
+          <p class="muted">A live ranking of every player in the arena.</p>
+        </div>
+        <div class="segmented">
+          <button class="selected" data-sort="credits">Credits</button
+          ><button data-sort="wins">Wins</button
+          ><button data-sort="win_rate">Win rate</button>
+        </div>
+      </div>
+      <section class="panel table-panel">
+        <div id="leaderboard-table"></div></section
+    ></template>
+    <template id="analytics-view"
+      ><div class="section-intro">
+        <div>
+          <p class="eyebrow accent">DATA, NOT DRAMA</p>
+          <h3>Your game, in focus.</h3>
+          <p class="muted">A quick read on your play and the wider platform.</p>
+        </div>
+      </div>
+      <div class="stats-grid analytics-stats">
+        <div class="stat">
+          <small>PLATFORM PLAYERS</small><strong id="a-users">0</strong>
+        </div>
+        <div class="stat">
+          <small>ACTIVE ROOMS</small><strong id="a-rooms">0</strong>
+        </div>
+        <div class="stat">
+          <small>TOTAL MATCHES</small><strong id="a-matches">0</strong>
+        </div>
+      </div>
+      <div class="charts">
+        <section class="panel chart-panel">
+          <h3>Personal results</h3>
+          <canvas id="personal-chart"></canvas>
+        </section>
+        <section class="panel chart-panel">
+          <h3>Daily matches</h3>
+          <canvas id="daily-chart"></canvas>
+        </section></div
+    ></template>
+    <div id="modal" class="modal hidden">
+      <div class="modal-box">
+        <button class="modal-close">×</button>
+        <p class="eyebrow accent">NEW ARENA</p>
+        <h3 id="modal-title">Create a room</h3>
+        <form id="room-form">
+          <label id="room-name-label"
+            >Room name<input
+              name="roomName"
+              placeholder="Friday night ladder" /></label
+          ><label id="room-code-label" class="hidden"
+            >Room code<input
+              name="roomId"
+              placeholder="ABC123"
+              maxlength="12" /></label
+          ><button class="primary full" type="submit">Continue →</button>
+        </form>
+      </div>
+    </div>
+    <script src="/js/app.js"></script>
+  </body>
+</html>
