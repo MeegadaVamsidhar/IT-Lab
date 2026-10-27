@@ -1,6 +1,6 @@
-# UG/PG Request Approvals
+# REQUEST APPROVALS
 
-UG/PG Request Approvals is a workflow-based departmental activity management application for UG/PG programmes. It supports HOD and faculty approval queues, activity submission, project allocation visibility, and role-aware department operations.
+REQUEST APPROVALS is a workflow-based departmental activity management application for UG/PG programmes. It supports HOD and faculty approval queues, activity submission, project allocation visibility, and role-aware department operations.
 
 ## Roles and demo accounts
 

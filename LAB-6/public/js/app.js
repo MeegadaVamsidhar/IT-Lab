@@ -180,9 +180,6 @@ function bindViewActions() {
       }),
   );
   $("#new-activity-button")?.addEventListener("click", openDialog);
-  $("#new-project-button")?.addEventListener("click", () =>
-    showToast("Project allocation form is ready for the next workflow update."),
-  );
   $("#status-filter")?.addEventListener("change", (event) => {
     const filtered =
       event.target.value === "all"
